@@ -1,0 +1,15 @@
+# Секреты
+.env
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Логи
+*.log
+
+# Базы данных
+*.db
+*.sqlite3
