@@ -4,28 +4,22 @@ import requests
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler, ConversationHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 
 # Загружаем переменные окружения
 load_dotenv()
-
-# === ОТЛАДКА: Проверяем, видит ли Python переменные из Railway ===
-print("🔍 DEBUG: TELEGRAM_BOT_TOKEN =", os.getenv("TELEGRAM_BOT_TOKEN"))
-print("🔍 DEBUG: Длина токена =", len(os.getenv("TELEGRAM_BOT_TOKEN", "")))
-# ==================================================================
 
 # ================= КОНФИГУРАЦИЯ =================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# Используем Groq если есть ключ, иначе OpenAI
 USE_GROQ = bool(GROQ_API_KEY)
 API_URL = "https://api.groq.com/openai/v1/chat/completions" if USE_GROQ else "https://api.openai.com/v1/chat/completions"
 API_KEY = GROQ_API_KEY if USE_GROQ else OPENAI_API_KEY
 MODEL = "llama-3.1-70b-versatile" if USE_GROQ else "gpt-3.5-turbo"
 
-print(f"🤖 Используем: {'Groq (Llama)' if USE_GROQ else 'OpenAI (GPT)'}")
+print(f" Используем: {'Groq (Llama)' if USE_GROQ else 'OpenAI (GPT)'}")
 
 # ================= ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =================
 MAX_HISTORY = 20
@@ -37,7 +31,7 @@ def get_main_menu():
     keyboard = [
         [InlineKeyboardButton("🤖 ИИ-помощник", callback_data='ai_mode'),
          InlineKeyboardButton("🎮 Игры", callback_data='games_menu')],
-        [InlineKeyboardButton("📋 Объявления", callback_data='ads_menu'),
+        [InlineKeyboardButton(" Объявления", callback_data='ads_menu'),
          InlineKeyboardButton("🧠 Очистить память", callback_data='clear_history')],
         [InlineKeyboardButton("⏰ Время", callback_data='get_time'),
          InlineKeyboardButton("📊 Статистика", callback_data='stats')]
@@ -179,30 +173,33 @@ async def tictactoe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     await query.edit_message_reply_markup(reply_markup=get_ttt_keyboard(board))
 
-# ================= ОБРАБОТЧИК КНОПОК =================
+# ================= ОБРАБОТЧИК КНОПОК МЕНЮ =================
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    await query.answer()  # ВАЖНО: подтверждаем callback
     
-    if query.data == 'ai_mode':
+    data = query.data
+    print(f"🔘 Получен callback: {data}")  # Отладка
+    
+    if data == 'ai_mode':
         await query.edit_message_text(
             "🤖 **ИИ-помощник активирован!**\n\nПросто напиши мне любой вопрос, и я отвечу!",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=get_main_menu()
         )
-    elif query.data == 'games_menu':
+    elif data == 'games_menu':
         await query.edit_message_text(
             "🎮 **Игры**\n\n• Крестики-нолики: /ttt\n• Скоро добавлю новые!",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=get_main_menu()
         )
-    elif query.data == 'ads_menu':
+    elif data == 'ads_menu':
         await query.edit_message_text(
             "📋 **Объявления**\n\nРаздел в разработке... 🛠",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=get_main_menu()
         )
-    elif query.data == 'clear_history':
+    elif data == 'clear_history':
         user_id = update.effective_user.id
         if user_id in user_histories:
             user_histories[user_id] = [{"role": "system", "content": "Ты полезный ИИ-ассистент."}]
@@ -210,11 +207,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🧠 История очищена!",
             reply_markup=get_main_menu()
         )
-    elif query.data == 'get_time':
+    elif data == 'get_time':
         from datetime import datetime
         now = datetime.now().strftime("%H:%M:%S")
         await query.edit_message_text(f"⏰ Сейчас: {now}", reply_markup=get_main_menu())
-    elif query.data == 'stats':
+    elif data == 'stats':
         await query.edit_message_text(
             f"📊 **Статистика:**\n\n"
             f"Пользователей с историей: {len(user_histories)}\n"
@@ -222,11 +219,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=get_main_menu()
         )
+    else:
+        print(f"⚠️ Неизвестный callback: {data}")
 
 # ================= СТАРТ =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 **Привет! Я Виктор ИИ Ассистент!**\n\n"
+        " **Привет! Я Виктор ИИ Ассистент!**\n\n"
         "Я умею:\n"
         "• 🤖 Отвечать на вопросы (ИИ)\n"
         "• 🎮 Играть в крестики-нолики\n"
@@ -240,7 +239,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= ЗАПУСК =================
 def main():
     if not TELEGRAM_TOKEN:
-        print("❌ TELEGRAM_BOT_TOKEN не найден! Проверь переменные в Railway.")
+        print("❌ TELEGRAM_BOT_TOKEN не найден!")
         return
     
     print("🚀 Запускаем бота...")
@@ -252,11 +251,18 @@ def main():
     
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
+    # ВАЖНО: порядок обработчиков!
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("clear", clear_history))
     application.add_handler(CommandHandler("ttt", tictactoe_command))
+    
+    # Сначала обработчик крестиков-ноликов (с паттерном)
     application.add_handler(CallbackQueryHandler(tictactoe_callback, pattern='^ttt_'))
+    
+    # Потом обработчик меню (без паттерна — ловит всё остальное)
     application.add_handler(CallbackQueryHandler(button_handler))
+    
+    # Текстовые сообщения — в конце
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_chat))
     
     print("✅ Бот запущен! Ожидаем сообщения...")
