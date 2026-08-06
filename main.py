@@ -9,6 +9,11 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # Загружаем переменные окружения
 load_dotenv()
 
+# === ОТЛАДКА: Проверяем, видит ли Python переменные из Railway ===
+print("🔍 DEBUG: TELEGRAM_BOT_TOKEN =", os.getenv("TELEGRAM_BOT_TOKEN"))
+print("🔍 DEBUG: Длина токена =", len(os.getenv("TELEGRAM_BOT_TOKEN", "")))
+# ==================================================================
+
 # ================= КОНФИГУРАЦИЯ =================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -20,7 +25,7 @@ API_URL = "https://api.groq.com/openai/v1/chat/completions" if USE_GROQ else "ht
 API_KEY = GROQ_API_KEY if USE_GROQ else OPENAI_API_KEY
 MODEL = "llama-3.1-70b-versatile" if USE_GROQ else "gpt-3.5-turbo"
 
-print(f" Используем: {'Groq (Llama)' if USE_GROQ else 'OpenAI (GPT)'}")
+print(f"🤖 Используем: {'Groq (Llama)' if USE_GROQ else 'OpenAI (GPT)'}")
 
 # ================= ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =================
 MAX_HISTORY = 20
@@ -53,11 +58,8 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     
     user_message = update.message.text
-    
-    # Добавляем сообщение пользователя
     user_histories[user_id].append({"role": "user", "content": user_message})
     
-    # Отправляем "думаю..."
     thinking_msg = await update.message.reply_text("🤔 Думаю...")
     
     try:
@@ -76,7 +78,6 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await thinking_msg.delete()
             await update.message.reply_text(ai_response, parse_mode=ParseMode.MARKDOWN)
             
-            # Ограничиваем историю
             if len(user_histories[user_id]) > MAX_HISTORY + 1:
                 user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-MAX_HISTORY:]
         else:
@@ -162,7 +163,6 @@ async def tictactoe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return
 
-    # Ход бота
     empty = [i for i, val in enumerate(board) if val == ' ']
     if empty:
         import random
@@ -186,7 +186,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if query.data == 'ai_mode':
         await query.edit_message_text(
-            " **ИИ-помощник активирован!**\n\nПросто напиши мне любой вопрос, и я отвечу!",
+            "🤖 **ИИ-помощник активирован!**\n\nПросто напиши мне любой вопрос, и я отвечу!",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=get_main_menu()
         )
@@ -226,10 +226,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= СТАРТ =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        " **Привет! Я Виктор ИИ Ассистент!**\n\n"
+        "👋 **Привет! Я Виктор ИИ Ассистент!**\n\n"
         "Я умею:\n"
         "• 🤖 Отвечать на вопросы (ИИ)\n"
-        "•  Играть в крестики-нолики\n"
+        "• 🎮 Играть в крестики-нолики\n"
         "• 📋 Вести объявления (скоро)\n"
         "• 🧠 Помнить историю диалога\n\n"
         "Выбери действие:",
@@ -240,7 +240,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= ЗАПУСК =================
 def main():
     if not TELEGRAM_TOKEN:
-        print("❌ TELEGRAM_BOT_TOKEN не найден!")
+        print("❌ TELEGRAM_BOT_TOKEN не найден! Проверь переменные в Railway.")
         return
     
     print("🚀 Запускаем бота...")
@@ -248,18 +248,15 @@ def main():
     
     if not API_KEY:
         print("⚠️ WARNING: Ни OPENAI_API_KEY, ни GROQ_API_KEY не найдены!")
-        print("   ИИ-функции не будут работать. Добавь ключи в .env или на Railway.")
+        print("   ИИ-функции не будут работать. Добавь ключи в Railway.")
     
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
-    # Обработчики
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("clear", clear_history))
     application.add_handler(CommandHandler("ttt", tictactoe_command))
     application.add_handler(CallbackQueryHandler(tictactoe_callback, pattern='^ttt_'))
     application.add_handler(CallbackQueryHandler(button_handler))
-    
-    # ИИ-чат (все текстовые сообщения)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_chat))
     
     print("✅ Бот запущен! Ожидаем сообщения...")
