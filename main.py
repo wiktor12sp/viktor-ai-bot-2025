@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+from datetime import datetime
+import pytz
 
 # Загружаем переменные окружения
 load_dotenv()
@@ -30,11 +32,11 @@ tictactoe_games = {}
 # ================= УТИЛИТЫ =================
 def get_main_menu():
     keyboard = [
-        [InlineKeyboardButton(" ИИ-помощник", callback_data='ai_mode'),
+        [InlineKeyboardButton("🤖 ИИ-помощник", callback_data='ai_mode'),
          InlineKeyboardButton("🎮 Игры", callback_data='games_menu')],
         [InlineKeyboardButton("📋 Объявления", callback_data='ads_menu'),
-         InlineKeyboardButton(" Очистить память", callback_data='clear_history')],
-        [InlineKeyboardButton(" Время", callback_data='get_time'),
+         InlineKeyboardButton("🧠 Очистить память", callback_data='clear_history')],
+        [InlineKeyboardButton("⏰ Время", callback_data='get_time'),
          InlineKeyboardButton("📊 Статистика", callback_data='stats')]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -81,12 +83,7 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "max_tokens": 1024
         }
         
-        print(f"📤 Отправляем запрос к {API_URL}")
-        print(f" Модель: {MODEL}")
-        print(f"📊 Количество сообщений: {len(messages)}")
-        
         response = requests.post(API_URL, headers=headers, json=data, timeout=30)
-        print(f"📥 Ответ от API: {response.status_code}")
         
         if response.status_code == 200:
             result = response.json()
@@ -100,9 +97,6 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-MAX_HISTORY:]
         else:
             error_text = response.text
-            print(f" Ошибка API: {response.status_code}")
-            print(f"📄 Текст ошибки: {error_text}")
-            
             await thinking_msg.delete()
             await update.message.reply_text(
                 f"❌ Ошибка API ({response.status_code}):\n{error_text[:200]}"
@@ -111,7 +105,6 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await thinking_msg.delete()
         await update.message.reply_text(f"❌ Ошибка: {str(e)}")
-        print(f"💥 Исключение: {e}")
 
 async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -119,7 +112,7 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_histories[user_id] = [
             {"role": "system", "content": "Ты полезный ИИ-ассистент. Отвечай кратко и по делу на русском языке."}
         ]
-    await update.message.reply_text(" История диалога очищена!", reply_markup=get_main_menu())
+    await update.message.reply_text("🧠 История диалога очищена!", reply_markup=get_main_menu())
 
 # ================= КРЕСТИКИ-НОЛИКИ =================
 def check_winner(board):
@@ -135,7 +128,7 @@ def get_ttt_keyboard(board):
         row = []
         for j in range(3):
             idx = i + j
-            symbol = '' if board[idx] == 'X' else ('⭕' if board[idx] == 'O' else '⬜')
+            symbol = '❌' if board[idx] == 'X' else ('⭕' if board[idx] == 'O' else '')
             row.append(InlineKeyboardButton(symbol, callback_data=f"ttt_{idx}"))
         keyboard.append(row)
     keyboard.append([InlineKeyboardButton("🔄 Новая игра", callback_data="ttt_restart")])
@@ -210,7 +203,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     data = query.data
-    print(f"🔘 Получен callback: {data}")
     
     if data == 'ai_mode':
         await query.edit_message_text(
@@ -220,7 +212,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     elif data == 'games_menu':
         await query.edit_message_text(
-            "🎮 **Игры**\n\n• Крестики-нолики: /ttt\n• Скоро добавлю новые!",
+            " **Игры**\n\n• Крестики-нолики: /ttt\n• Скоро добавлю новые!",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=get_main_menu()
         )
@@ -235,31 +227,57 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id in user_histories:
             user_histories[user_id] = [{"role": "system", "content": "Ты полезный ИИ-ассистент."}]
         await query.edit_message_text(
-            " История очищена!",
+            "🧠 История очищена!",
             reply_markup=get_main_menu()
         )
     elif data == 'get_time':
-        from datetime import datetime
-        now = datetime.now().strftime("%H:%M:%S")
-        await query.edit_message_text(f"⏰ Сейчас: {now}", reply_markup=get_main_menu())
+        # Московское время (UTC+3)
+        moscow_tz = pytz.timezone('Europe/Moscow')
+        now = datetime.now(moscow_tz).strftime("%H:%M:%S")
+        date = datetime.now(moscow_tz).strftime("%d.%m.%Y")
+        await query.edit_message_text(
+            f"⏰ **Сейчас:** {now}\n📅 **Дата:** {date}",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=get_main_menu()
+        )
     elif data == 'stats':
         await query.edit_message_text(
-            f"📊 **Статистика:**\n\n"
+            f" **Статистика:**\n\n"
             f"Пользователей с историей: {len(user_histories)}\n"
             f"Активных игр: {sum(1 for g in tictactoe_games.values() if g.get('active', False))}",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=get_main_menu()
         )
 
+# ================= КОМАНДА /admin =================
+async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для администратора"""
+    user_id = update.effective_user.id
+    
+    # Здесь можно добавить проверку на админа
+    # if user_id != YOUR_USER_ID:
+    #     await update.message.reply_text("❌ У вас нет доступа")
+    #     return
+    
+    await update.message.reply_text(
+        "🔧 **Панель администратора**\n\n"
+        "Доступные команды:\n"
+        "/stats - Статистика бота\n"
+        "/broadcast - Рассылка (в разработке)\n"
+        "/users - Список пользователей (в разработке)\n\n"
+        f"Твой ID: `{user_id}`",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
 # ================= СТАРТ =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        " **Привет! Я Виктор ИИ Ассистент!**\n\n"
+        "👋 **Привет! Я Виктор ИИ Ассистент!**\n\n"
         "Я умею:\n"
-        "•  Отвечать на вопросы (ИИ)\n"
-        "•  Играть в крестики-нолики\n"
+        "• 🤖 Отвечать на вопросы (ИИ)\n"
+        "• 🎮 Играть в крестики-нолики\n"
         "• 📋 Вести объявления (скоро)\n"
-        "•  Помнить историю диалога\n\n"
+        "• 🧠 Помнить историю диалога\n\n"
         "Выбери действие:",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=get_main_menu()
@@ -268,7 +286,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= ЗАПУСК =================
 def main():
     if not TELEGRAM_TOKEN:
-        print(" TELEGRAM_BOT_TOKEN не найден!")
+        print("❌ TELEGRAM_BOT_TOKEN не найден!")
         return
     
     print("🚀 Запускаем бота...")
@@ -280,11 +298,18 @@ def main():
     
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
+    # Обработчики команд
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("admin", admin_command))  # НОВАЯ КОМАНДА!
     application.add_handler(CommandHandler("clear", clear_history))
     application.add_handler(CommandHandler("ttt", tictactoe_command))
+    application.add_handler(CommandHandler("stats", lambda u, c: button_handler(u, c)))
+    
+    # Обработчики кнопок
     application.add_handler(CallbackQueryHandler(tictactoe_callback, pattern='^ttt_'))
     application.add_handler(CallbackQueryHandler(button_handler))
+    
+    # Текстовые сообщения
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_chat))
     
     print("✅ Бот запущен! Ожидаем сообщения...")
