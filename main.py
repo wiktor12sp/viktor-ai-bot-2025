@@ -34,10 +34,10 @@ def get_main_menu():
     keyboard = [
         [InlineKeyboardButton("🤖 ИИ-помощник", callback_data='ai_mode'),
          InlineKeyboardButton("🎮 Игры", callback_data='games_menu')],
-        [InlineKeyboardButton("📋 Объявления", callback_data='ads_menu'),
+        [InlineKeyboardButton(" Объявления", callback_data='ads_menu'),
          InlineKeyboardButton("🧠 Очистить память", callback_data='clear_history')],
         [InlineKeyboardButton("⏰ Время", callback_data='get_time'),
-         InlineKeyboardButton("📊 Статистика", callback_data='stats')]
+         InlineKeyboardButton(" Статистика", callback_data='stats')]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -112,7 +112,7 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_histories[user_id] = [
             {"role": "system", "content": "Ты полезный ИИ-ассистент. Отвечай кратко и по делу на русском языке."}
         ]
-    await update.message.reply_text("🧠 История диалога очищена!", reply_markup=get_main_menu())
+    await update.message.reply_text(" История диалога очищена!", reply_markup=get_main_menu())
 
 # ================= КРЕСТИКИ-НОЛИКИ =================
 def check_winner(board):
@@ -123,12 +123,18 @@ def check_winner(board):
     return 'draw' if ' ' not in board else None
 
 def get_ttt_keyboard(board):
+    """Создаёт клавиатуру для крестики-ноликов с видимыми пустыми клетками"""
     keyboard = []
     for i in range(0, 9, 3):
         row = []
         for j in range(3):
             idx = i + j
-            symbol = '❌' if board[idx] == 'X' else ('⭕' if board[idx] == 'O' else '')
+            if board[idx] == 'X':
+                symbol = '❌'
+            elif board[idx] == 'O':
+                symbol = ''
+            else:
+                symbol = ''  # Белый квадрат вместо пустой строки
             row.append(InlineKeyboardButton(symbol, callback_data=f"ttt_{idx}"))
         keyboard.append(row)
     keyboard.append([InlineKeyboardButton("🔄 Новая игра", callback_data="ttt_restart")])
@@ -152,7 +158,7 @@ async def tictactoe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if data == "ttt_restart":
         tictactoe_games[user_id] = {'board': [' '] * 9, 'active': True}
         await query.edit_message_text(
-            " **Крестики-нолики!**\n\nТвой ход (❌)!",
+            "🎮 **Крестики-нолики!**\n\nТвой ход ()!",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=get_ttt_keyboard(tictactoe_games[user_id]['board'])
         )
@@ -175,7 +181,7 @@ async def tictactoe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if winner:
         tictactoe_games[user_id]['active'] = False
         await query.edit_message_text(
-            f" **{'ТЫ ПОБЕДИЛ!' if winner == 'X' else 'НИЧЬЯ!'}**",
+            f"🎉 **{'ТЫ ПОБЕДИЛ!' if winner == 'X' else 'НИЧЬЯ!'}**",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=get_ttt_keyboard(board)
         )
@@ -242,7 +248,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     elif data == 'stats':
         await query.edit_message_text(
-            f" **Статистика:**\n\n"
+            f"📊 **Статистика:**\n\n"
             f"Пользователей с историей: {len(user_histories)}\n"
             f"Активных игр: {sum(1 for g in tictactoe_games.values() if g.get('active', False))}",
             parse_mode=ParseMode.MARKDOWN,
@@ -254,13 +260,8 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда для администратора"""
     user_id = update.effective_user.id
     
-    # Здесь можно добавить проверку на админа
-    # if user_id != YOUR_USER_ID:
-    #     await update.message.reply_text("❌ У вас нет доступа")
-    #     return
-    
     await update.message.reply_text(
-        "🔧 **Панель администратора**\n\n"
+        " **Панель администратора**\n\n"
         "Доступные команды:\n"
         "/stats - Статистика бота\n"
         "/broadcast - Рассылка (в разработке)\n"
@@ -272,7 +273,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= СТАРТ =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 **Привет! Я Виктор ИИ Ассистент!**\n\n"
+        " **Привет! Я Виктор ИИ Ассистент!**\n\n"
         "Я умею:\n"
         "• 🤖 Отвечать на вопросы (ИИ)\n"
         "• 🎮 Играть в крестики-нолики\n"
@@ -300,7 +301,7 @@ def main():
     
     # Обработчики команд
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("admin", admin_command))  # НОВАЯ КОМАНДА!
+    application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(CommandHandler("clear", clear_history))
     application.add_handler(CommandHandler("ttt", tictactoe_command))
     application.add_handler(CommandHandler("stats", lambda u, c: button_handler(u, c)))
