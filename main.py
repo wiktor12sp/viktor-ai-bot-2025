@@ -21,7 +21,7 @@ API_URL = "https://api.groq.com/openai/v1/chat/completions" if USE_GROQ else "ht
 API_KEY = GROQ_API_KEY if USE_GROQ else OPENAI_API_KEY
 MODEL = "llama-3.3-70b-versatile" if USE_GROQ else "gpt-3.5-turbo"
 
-print(f" Используем: {'Groq (Llama)' if USE_GROQ else 'OpenAI (GPT)'}")
+print(f"🤖 Используем: {'Groq (Llama)' if USE_GROQ else 'OpenAI (GPT)'}")
 print(f"🔑 API ключ: {'найден' if API_KEY else 'НЕ НАЙДЕН'}")
 
 # ================= ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =================
@@ -34,10 +34,10 @@ def get_main_menu():
     keyboard = [
         [InlineKeyboardButton("🤖 ИИ-помощник", callback_data='ai_mode'),
          InlineKeyboardButton("🎮 Игры", callback_data='games_menu')],
-        [InlineKeyboardButton(" Объявления", callback_data='ads_menu'),
+        [InlineKeyboardButton("📋 Объявления", callback_data='ads_menu'),
          InlineKeyboardButton("🧠 Очистить память", callback_data='clear_history')],
         [InlineKeyboardButton("⏰ Время", callback_data='get_time'),
-         InlineKeyboardButton(" Статистика", callback_data='stats')]
+         InlineKeyboardButton("📊 Статистика", callback_data='stats')]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -112,7 +112,7 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_histories[user_id] = [
             {"role": "system", "content": "Ты полезный ИИ-ассистент. Отвечай кратко и по делу на русском языке."}
         ]
-    await update.message.reply_text(" История диалога очищена!", reply_markup=get_main_menu())
+    await update.message.reply_text("🧠 История диалога очищена!", reply_markup=get_main_menu())
 
 # ================= КРЕСТИКИ-НОЛИКИ =================
 def check_winner(board):
@@ -123,7 +123,7 @@ def check_winner(board):
     return 'draw' if ' ' not in board else None
 
 def get_ttt_keyboard(board):
-    """Создаёт клавиатуру для крестики-ноликов с видимыми пустыми клетками"""
+    """Создаёт клавиатуру для крестиков-ноликов с ВИДИМЫМИ символами"""
     keyboard = []
     for i in range(0, 9, 3):
         row = []
@@ -132,9 +132,9 @@ def get_ttt_keyboard(board):
             if board[idx] == 'X':
                 symbol = '❌'
             elif board[idx] == 'O':
-                symbol = ''
+                symbol = '⭕'
             else:
-                symbol = ''  # Белый квадрат вместо пустой строки
+                symbol = '⬜'  # Явный видимый символ для пустой клетки!
             row.append(InlineKeyboardButton(symbol, callback_data=f"ttt_{idx}"))
         keyboard.append(row)
     keyboard.append([InlineKeyboardButton("🔄 Новая игра", callback_data="ttt_restart")])
@@ -158,7 +158,7 @@ async def tictactoe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if data == "ttt_restart":
         tictactoe_games[user_id] = {'board': [' '] * 9, 'active': True}
         await query.edit_message_text(
-            "🎮 **Крестики-нолики!**\n\nТвой ход ()!",
+            "🎮 **Крестики-нолики!**\n\nТвой ход (❌)!",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=get_ttt_keyboard(tictactoe_games[user_id]['board'])
         )
@@ -175,6 +175,7 @@ async def tictactoe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.answer("Клетка занята!", show_alert=True)
         return
 
+    # Ход игрока
     board[idx] = 'X'
     winner = check_winner(board)
     
@@ -187,6 +188,7 @@ async def tictactoe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return
 
+    # Ход бота
     empty = [i for i, val in enumerate(board) if val == ' ']
     if empty:
         import random
@@ -201,6 +203,7 @@ async def tictactoe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
             return
     
+    # Обновляем поле после хода бота
     await query.edit_message_reply_markup(reply_markup=get_ttt_keyboard(board))
 
 # ================= ОБРАБОТЧИК КНОПОК МЕНЮ =================
@@ -218,13 +221,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     elif data == 'games_menu':
         await query.edit_message_text(
-            " **Игры**\n\n• Крестики-нолики: /ttt\n• Скоро добавлю новые!",
+            "🎮 **Игры**\n\n• Крестики-нолики: /ttt\n• Скоро добавлю новые!",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=get_main_menu()
         )
     elif data == 'ads_menu':
         await query.edit_message_text(
-            " **Объявления**\n\nРаздел в разработке... 🛠",
+            "📋 **Объявления**\n\nРаздел в разработке... 🛠",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=get_main_menu()
         )
@@ -237,7 +240,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=get_main_menu()
         )
     elif data == 'get_time':
-        # Московское время (UTC+3)
         moscow_tz = pytz.timezone('Europe/Moscow')
         now = datetime.now(moscow_tz).strftime("%H:%M:%S")
         date = datetime.now(moscow_tz).strftime("%d.%m.%Y")
@@ -257,11 +259,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================= КОМАНДА /admin =================
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Команда для администратора"""
     user_id = update.effective_user.id
-    
     await update.message.reply_text(
-        " **Панель администратора**\n\n"
+        "🔧 **Панель администратора**\n\n"
         "Доступные команды:\n"
         "/stats - Статистика бота\n"
         "/broadcast - Рассылка (в разработке)\n"
@@ -273,7 +273,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================= СТАРТ =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        " **Привет! Я Виктор ИИ Ассистент!**\n\n"
+        "👋 **Привет! Я Виктор ИИ Ассистент!**\n\n"
         "Я умею:\n"
         "• 🤖 Отвечать на вопросы (ИИ)\n"
         "• 🎮 Играть в крестики-нолики\n"
@@ -299,18 +299,14 @@ def main():
     
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
-    # Обработчики команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(CommandHandler("clear", clear_history))
     application.add_handler(CommandHandler("ttt", tictactoe_command))
     application.add_handler(CommandHandler("stats", lambda u, c: button_handler(u, c)))
     
-    # Обработчики кнопок
     application.add_handler(CallbackQueryHandler(tictactoe_callback, pattern='^ttt_'))
     application.add_handler(CallbackQueryHandler(button_handler))
-    
-    # Текстовые сообщения
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_chat))
     
     print("✅ Бот запущен! Ожидаем сообщения...")
