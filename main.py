@@ -7,7 +7,7 @@ from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from datetime import datetime
 import pytz
-import tools  # Подключаем наши новые инструменты
+import tools
 
 # Загружаем переменные окружения
 load_dotenv()
@@ -38,7 +38,7 @@ def get_main_menu():
         [InlineKeyboardButton("📋 Объявления", callback_data='ads_menu'),
          InlineKeyboardButton("🧠 Очистить память", callback_data='clear_history')],
         [InlineKeyboardButton("⏰ Время", callback_data='get_time'),
-         InlineKeyboardButton("📊 Статистика", callback_data='stats')]
+         InlineKeyboardButton(" Статистика", callback_data='stats')]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -210,7 +210,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     
     if data == 'ai_mode':
-        await query.edit_message_text("🤖 **ИИ-помощник активирован!**\n\nПросто напиши мне любой вопрос, и я отвечу!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
+        await query.edit_message_text(" **ИИ-помощник активирован!**\n\nПросто напиши мне любой вопрос, и я отвечу!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
     elif data == 'games_menu':
         await query.edit_message_text("🎮 **Игры**\n\n• Крестики-нолики: /ttt\n• Скоро добавлю новые!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
     elif data == 'ads_menu':
@@ -235,22 +235,22 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================= СТАРТ =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 **Привет! Я Виктор ИИ Ассистент!**\n\nЯ умею:\n• 🤖 Отвечать на вопросы (ИИ)\n• 🎮 Играть в крестики-нолики\n• 📋 Вести объявления (скоро)\n• 🧠 Помнить историю диалога\n\nВыбери действие:", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
+    await update.message.reply_text("👋 **Привет! Я Виктор ИИ Ассистент!**\n\nЯ умею:\n• 🤖 Отвечать на вопросы (ИИ)\n•  Играть в крестики-нолики\n• 📋 Вести объявления (скоро)\n• 🧠 Помнить историю диалога\n\nВыбери действие:", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
 
 # ================= НОВЫЕ ИНСТРУМЕНТЫ =================
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📖 **Список команд:**\n\n"
-        "/start - Главное меню\n"
-        "/help - Эта справка\n"
-        "/ttt - Играть в крестики-нолики\n"
-        "/calc <выражение> - Калькулятор (пример: /calc 25*4)\n"
-        "/search <запрос> - Поиск в интернете\n"
-        "/time_cmd - Текущее время\n"
-        "/clear - Очистить историю ИИ\n"
-        "/admin - Панель администратора",
-        parse_mode=ParseMode.MARKDOWN
+    help_text = (
+        " Список команд:\n\n"
+        " /start - Главное меню\n"
+        "🔹 /help - Эта справка\n"
+        "🔹 /ttt - Играть в крестики-нолики\n"
+        "🔹 /calc <выражение> - Калькулятор (пример: /calc 25*4)\n"
+        "🔹 /search <запрос> - Поиск в интернете\n"
+        "🔹 /time_cmd - Текущее время\n"
+        "🔹 /clear - Очистить историю ИИ\n"
+        "🔹 /admin - Панель администратора"
     )
+    await update.message.reply_text(help_text)
 
 async def calc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     expression = " ".join(context.args)
@@ -278,7 +278,7 @@ def main():
         print("❌ TELEGRAM_BOT_TOKEN не найден!")
         return
     
-    print("🚀 Запускаем бота...")
+    print(" Запускаем бота...")
     print(f"📱 Токен: {TELEGRAM_TOKEN[:10]}...")
     
     if not API_KEY:
