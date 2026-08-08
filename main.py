@@ -7,6 +7,7 @@ from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from datetime import datetime
 import pytz
+import tools  # Подключаем наши новые инструменты
 
 # Загружаем переменные окружения
 load_dotenv()
@@ -123,7 +124,6 @@ def check_winner(board):
     return 'draw' if ' ' not in board else None
 
 def get_ttt_keyboard(board):
-    """Создаёт клавиатуру для крестиков-ноликов с ВИДИМЫМИ символами"""
     keyboard = []
     for i in range(0, 9, 3):
         row = []
@@ -134,7 +134,7 @@ def get_ttt_keyboard(board):
             elif board[idx] == 'O':
                 symbol = '⭕'
             else:
-                symbol = '⬜'  # Явный видимый символ для пустой клетки!
+                symbol = '⬜'
             row.append(InlineKeyboardButton(symbol, callback_data=f"ttt_{idx}"))
         keyboard.append(row)
     keyboard.append([InlineKeyboardButton("🔄 Новая игра", callback_data="ttt_restart")])
@@ -175,7 +175,6 @@ async def tictactoe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.answer("Клетка занята!", show_alert=True)
         return
 
-    # Ход игрока
     board[idx] = 'X'
     winner = check_winner(board)
     
@@ -188,7 +187,6 @@ async def tictactoe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return
 
-    # Ход бота
     empty = [i for i, val in enumerate(board) if val == ' ']
     if empty:
         import random
@@ -203,86 +201,76 @@ async def tictactoe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
             return
     
-    # Обновляем поле после хода бота
     await query.edit_message_reply_markup(reply_markup=get_ttt_keyboard(board))
 
 # ================= ОБРАБОТЧИК КНОПОК МЕНЮ =================
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
     data = query.data
     
     if data == 'ai_mode':
-        await query.edit_message_text(
-            "🤖 **ИИ-помощник активирован!**\n\nПросто напиши мне любой вопрос, и я отвечу!",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=get_main_menu()
-        )
+        await query.edit_message_text("🤖 **ИИ-помощник активирован!**\n\nПросто напиши мне любой вопрос, и я отвечу!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
     elif data == 'games_menu':
-        await query.edit_message_text(
-            "🎮 **Игры**\n\n• Крестики-нолики: /ttt\n• Скоро добавлю новые!",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=get_main_menu()
-        )
+        await query.edit_message_text("🎮 **Игры**\n\n• Крестики-нолики: /ttt\n• Скоро добавлю новые!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
     elif data == 'ads_menu':
-        await query.edit_message_text(
-            "📋 **Объявления**\n\nРаздел в разработке... 🛠",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=get_main_menu()
-        )
+        await query.edit_message_text("📋 **Объявления**\n\nРаздел в разработке... 🛠", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
     elif data == 'clear_history':
         user_id = update.effective_user.id
         if user_id in user_histories:
             user_histories[user_id] = [{"role": "system", "content": "Ты полезный ИИ-ассистент."}]
-        await query.edit_message_text(
-            "🧠 История очищена!",
-            reply_markup=get_main_menu()
-        )
+        await query.edit_message_text("🧠 История очищена!", reply_markup=get_main_menu())
     elif data == 'get_time':
         moscow_tz = pytz.timezone('Europe/Moscow')
         now = datetime.now(moscow_tz).strftime("%H:%M:%S")
         date = datetime.now(moscow_tz).strftime("%d.%m.%Y")
-        await query.edit_message_text(
-            f"⏰ **Сейчас:** {now}\n📅 **Дата:** {date}",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=get_main_menu()
-        )
+        await query.edit_message_text(f"⏰ **Сейчас:** {now}\n📅 **Дата:** {date}", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
     elif data == 'stats':
-        await query.edit_message_text(
-            f"📊 **Статистика:**\n\n"
-            f"Пользователей с историей: {len(user_histories)}\n"
-            f"Активных игр: {sum(1 for g in tictactoe_games.values() if g.get('active', False))}",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=get_main_menu()
-        )
+        await query.edit_message_text(f"📊 **Статистика:**\n\nПользователей с историей: {len(user_histories)}\nАктивных игр: {sum(1 for g in tictactoe_games.values() if g.get('active', False))}", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
 
 # ================= КОМАНДА /admin =================
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    await update.message.reply_text(
-        "🔧 **Панель администратора**\n\n"
-        "Доступные команды:\n"
-        "/stats - Статистика бота\n"
-        "/broadcast - Рассылка (в разработке)\n"
-        "/users - Список пользователей (в разработке)\n\n"
-        f"Твой ID: `{user_id}`",
-        parse_mode=ParseMode.MARKDOWN
-    )
+    await update.message.reply_text(f"🔧 **Панель администратора**\n\nДоступные команды:\n/stats - Статистика бота\n/broadcast - Рассылка (в разработке)\n/users - Список пользователей (в разработке)\n\nТвой ID: `{user_id}`", parse_mode=ParseMode.MARKDOWN)
 
 # ================= СТАРТ =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("👋 **Привет! Я Виктор ИИ Ассистент!**\n\nЯ умею:\n• 🤖 Отвечать на вопросы (ИИ)\n• 🎮 Играть в крестики-нолики\n• 📋 Вести объявления (скоро)\n• 🧠 Помнить историю диалога\n\nВыбери действие:", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
+
+# ================= НОВЫЕ ИНСТРУМЕНТЫ =================
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 **Привет! Я Виктор ИИ Ассистент!**\n\n"
-        "Я умею:\n"
-        "• 🤖 Отвечать на вопросы (ИИ)\n"
-        "• 🎮 Играть в крестики-нолики\n"
-        "• 📋 Вести объявления (скоро)\n"
-        "• 🧠 Помнить историю диалога\n\n"
-        "Выбери действие:",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=get_main_menu()
+        "📖 **Список команд:**\n\n"
+        "/start - Главное меню\n"
+        "/help - Эта справка\n"
+        "/ttt - Играть в крестики-нолики\n"
+        "/calc <выражение> - Калькулятор (пример: /calc 25*4)\n"
+        "/search <запрос> - Поиск в интернете\n"
+        "/time_cmd - Текущее время\n"
+        "/clear - Очистить историю ИИ\n"
+        "/admin - Панель администратора",
+        parse_mode=ParseMode.MARKDOWN
     )
+
+async def calc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    expression = " ".join(context.args)
+    if not expression:
+        await update.message.reply_text("❌ Введите выражение. Пример: `/calc 2+2*2`", parse_mode=ParseMode.MARKDOWN)
+        return
+    await update.message.reply_text(tools.calculate(expression))
+
+async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = " ".join(context.args)
+    if not query:
+        await update.message.reply_text("❌ Введите запрос. Пример: `/search погода в москве`", parse_mode=ParseMode.MARKDOWN)
+        return
+    thinking_msg = await update.message.reply_text("🔍 Ищу в интернете...")
+    result = tools.search_internet(query)
+    await thinking_msg.delete()
+    await update.message.reply_text(result)
+
+async def time_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(tools.get_current_time())
 
 # ================= ЗАПУСК =================
 def main():
@@ -299,14 +287,22 @@ def main():
     
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
+    # Обработчики команд
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("calc", calc_command))
+    application.add_handler(CommandHandler("search", search_command))
+    application.add_handler(CommandHandler("time_cmd", time_cmd))
     application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(CommandHandler("clear", clear_history))
     application.add_handler(CommandHandler("ttt", tictactoe_command))
     application.add_handler(CommandHandler("stats", lambda u, c: button_handler(u, c)))
     
+    # Обработчики кнопок
     application.add_handler(CallbackQueryHandler(tictactoe_callback, pattern='^ttt_'))
     application.add_handler(CallbackQueryHandler(button_handler))
+    
+    # Текстовые сообщения
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_chat))
     
     print("✅ Бот запущен! Ожидаем сообщения...")
