@@ -70,6 +70,21 @@ def get_main_menu():
     ]
     return InlineKeyboardMarkup(keyboard)
 
+def get_ads_keyboard(ads):
+    """Создаёт кнопки с ссылками на объявления"""
+    keyboard = []
+    for ad in ads[:10]:  # Показываем максимум 10 последних объявлений
+        title = ad.get('title', 'Без названия')[:40]
+        link = ad.get('link', '')
+        if link:
+            keyboard.append([InlineKeyboardButton(f" {title}", url=link)])
+    
+    if not keyboard:
+        keyboard.append([InlineKeyboardButton("Объявлений пока нет", callback_data='no_ads')])
+    
+    keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='back_to_main')])
+    return InlineKeyboardMarkup(keyboard)
+
 def clean_response(text):
     text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     return text.strip()
@@ -241,8 +256,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(" **ИИ-помощник активирован!**\n\nПросто напиши мне любой вопрос, и я отвечу!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
     elif data == 'games_menu':
         await query.edit_message_text("🎮 **Игры**\n\n• Крестики-нолики: /ttt\n• Скоро добавлю новые!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
-    elif data == 'ads_menu':
-        await query.edit_message_text("📋 **Объявления**\n\nРаздел в разработке... 🛠", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
+        elif data == 'ads_menu':
+        ads = load_ads()
+        if ads:
+            await query.edit_message_text(
+                " **Актуальные объявления:**\n\nНажми на товар, чтобы открыть:",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=get_ads_keyboard(ads)
+            )
+        else:
+            await query.edit_message_text(
+                "📋 **Объявления**\n\nПока нет активных объявлений. Загляни позже!",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=get_main_menu()
+            )
+    elif data == 'back_to_main':
+        await query.edit_message_text(
+            "👋 **Главное меню**\n\nВыбери действие:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=get_main_menu()
+        )
+    elif data == 'no_ads':
+        await query.answer("Объявлений пока нет", show_alert=True)
+        
     elif data == 'clear_history':
         user_id = update.effective_user.id
         if user_id in user_histories:
@@ -263,8 +299,71 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================= СТАРТ =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 **Привет! Я Виктор ИИ Ассистент!**\n\nЯ умею:\n• 🤖 Отвечать на вопросы (ИИ)\n•  Играть в крестики-нолики\n• 📋 Вести объявления (скоро)\n• 🧠 Помнить историю диалога\n\nВыбери действие:", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
+    user_id = update.effective_user.id
+    first_name = update.effective_user.first_name
+    
+    await update.message.reply_text(
+        f"👋 **Привет, {first_name}!** Я Виктор — ИИ-ассистент.\n\n"
+        "Я умею:\n"
+        "• 🤖 Отвечать на вопросы (просто напиши мне)\n"
+        "• 🎮 Играть в игры (крестики-нолики и другие)\n"
+        "• 📋 Показывать объявления\n"
+        "• 🧮 Считать математику (/calc)\n"
+        "• 🔍 Искать в интернете (/search)\n\n"
+        "**Нажми на любую кнопку ниже или просто напиши вопрос!**",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=get_main_menu()
+    )
+    await update.message.reply_text("👋 **Пр" \ "ивет! Я Виктор ИИ Ассистент!**\n\nЯ умею:\n• 🤖 Отвечать на вопросы (ИИ)\n•  Играть в крестики-нолики\n• 📋 Вести объявления (скоро)\n• 🧠 Помнить историю диалога\n\nВыбери действие:", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
+async def add_ad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Добавить объявление (только для админа)"""
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ Эта команда только для администратора")
+        return
+    
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "Использование: `/add_ad Название | Ссылка`\n\nПример: `/add_ad iPhone 13 | https://avito.ru/...`",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+    
+    text = " ".join(args)
+    parts = text.split('|')
+    
+    if len(parts) != 2:
+        await update.message.reply_text("❌ Формат: Название | Ссылка (разделитель - вертикальная черта |)")
+        return
+    
+    title = parts[0].strip()
+    link = parts[1].strip()
+    
+    ads = load_ads()
+    ads.append({"title": title, "link": link})
+    save_ads(ads)
+    
+    await update.message.reply_text(f"✅ Объявление добавлено: {title}")
 
+async def remove_ad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Удалить объявление (только для админа)"""
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        await update.message.reply_text("❌ Эта команда только для администратора")
+        return
+    
+    ads = load_ads()
+    if not ads:
+        await update.message.reply_text("📋 Список объявлений пуст")
+        return
+    
+    text = "📋 Объявления для удаления:\n\n"
+    for i, ad in enumerate(ads):
+        text += f"{i+1}. {ad['title']}\n"
+    text += "\nНапиши `/remove_ad <номер>` чтобы удалить (например: /remove_ad 1)"
+    
+    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
 # ================= НОВЫЕ ИНСТРУМЕНТЫ =================
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
@@ -322,6 +421,8 @@ def main():
     application.add_handler(CommandHandler("search", search_command))
     application.add_handler(CommandHandler("time_cmd", time_cmd))
     application.add_handler(CommandHandler("admin", admin_command))
+    application.add_handler(CommandHandler("add_ad", add_ad_command))
+    application.add_handler(CommandHandler("remove_ad", remove_ad_command))
     application.add_handler(CommandHandler("clear", clear_history))
     application.add_handler(CommandHandler("ttt", tictactoe_command))
     application.add_handler(CommandHandler("stats", lambda u, c: button_handler(u, c)))
