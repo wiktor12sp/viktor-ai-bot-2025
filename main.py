@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import requests
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -12,6 +13,33 @@ import tools
 # Загружаем переменные окружения
 load_dotenv()
 
+# ================= КОНФИГУРАЦИЯ =================
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "8785270105"))
+
+# Путь к файлу объявлений
+ADS_FILE = "ads_data.json"
+
+def load_ads():
+    """Загружает объявления из файла"""
+    try:
+        with open(ADS_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
+    except Exception as e:
+        print(f"Ошибка загрузки объявлений: {e}")
+        return []
+
+def save_ads(ads):
+    """Сохраняет объявления в файл"""
+    try:
+        with open(ADS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(ads, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Ошибка сохранения объявлений: {e}")
 # ================= КОНФИГУРАЦИЯ =================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -310,3 +338,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    
