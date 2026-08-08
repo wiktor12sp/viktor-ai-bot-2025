@@ -355,9 +355,24 @@ async def remove_ad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     ads = load_ads()
     if not ads:
-        await update.message.reply_text("📋 Список объявлений пуст")
+        await update.message.reply_text(" Список объявлений пуст")
         return
     
+    # Проверяем, передан ли номер для удаления
+    if context.args:
+        try:
+            num = int(context.args[0])
+            if 1 <= num <= len(ads):
+                removed = ads.pop(num - 1)
+                save_ads(ads)
+                await update.message.reply_text(f"✅ Удалено: {removed['title']}")
+            else:
+                await update.message.reply_text(f"❌ Номер должен быть от 1 до {len(ads)}")
+        except ValueError:
+            await update.message.reply_text("❌ Введите номер (например: /remove_ad 1)")
+        return
+    
+    # Если номер не передан — показываем список
     text = "📋 Объявления для удаления:\n\n"
     for i, ad in enumerate(ads):
         text += f"{i+1}. {ad['title']}\n"
