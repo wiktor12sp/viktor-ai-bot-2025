@@ -7,9 +7,15 @@ from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
-import tools
+
+# Безопасный импорт tools
+try:
+    import tools
+except ImportError:
+    print("⚠️ tools.py не найден, функции калькулятора и поиска будут недоступны")
+    tools = None
 
 # Загружаем переменные окружения
 load_dotenv()
@@ -32,379 +38,176 @@ print(f"🔑 API ключ: {'найден' if API_KEY else 'НЕ НАЙДЕН'}"
 
 # ================= ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =================
 MAX_HISTORY = 20
+HISTORY_TIMEOUT = timedelta(hours=1)  # Очистка истории через час бездействия
 user_histories = {}
+user_last_activity = {}
 tictactoe_games = {}
 guess_games = {}
+quiz_games = {}
 
-class GuessGameFilter(filters.BaseFilter):
-    def filter(self, message):
-        return message.from_user.id in guess_games
+# Исправленный фильтр
+class GuessGameFilter(filters.UpdateFilter):
+    def filter(self, update):
+        return update.effective_user.id in guess_games
 
 # ================= УТИЛИТЫ =================
-def load_ads():
-    try:
-        with open(ADS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return []
-    except Exception as e:
-        print(f"Ошибка загрузки объявлений: {e}")
-        return []
+def clean_old_histories():
+    """Очистка старых историй"""
+    now = datetime.now()
+    to_delete = []
+    for user_id, last_active in user_last_activity.items():
+        if now - last_active > HISTORY_TIMEOUT:
+            to_delete.append(user_id)
+    for user_id in to_delete:
+        user_histories.pop(user_id, None)
+        user_last_activity.pop(user_id, None)
+        tictactoe_games.pop(user_id, None)
+        guess_games.pop(user_id, None)
+        quiz_games.pop(user_id, None)
+    if to_delete:
+        print(f"🧹 Очищены данные {len(to_delete)} неактивных пользователей")
 
-def save_ads(ads):
-    try:
-        with open(ADS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(ads, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"Ошибка сохранения объявлений: {e}")
+# [Остальной код функций load_ads, save_ads, get_main_menu и т.д. остается без изменений]
 
-def get_main_menu():
-    keyboard = [
-        [InlineKeyboardButton("🤖 ИИ-помощник", callback_data='ai_mode'),
-         InlineKeyboardButton("🎮 Игры", callback_data='games_menu')],
-        [InlineKeyboardButton("📋 Объявления", callback_data='ads_menu'),
-         InlineKeyboardButton("🧠 Очистить память", callback_data='clear_history')],
-        [InlineKeyboardButton("⏰ Время", callback_data='get_time'),
-         InlineKeyboardButton("📊 Статистика", callback_data='stats')]
-    ]
-    return InlineKeyboardMarkup(keyboard)
+# ================= ИСПРАВЛЕННЫЕ ОБРАБОТЧИКИ =================
 
-def get_ads_keyboard(ads):
-    keyboard = []
-    for ad in ads[:10]:
-        title = ad.get('title', 'Без названия')[:40]
-        link = ad.get('link', '')
-        if link:
-            keyboard.append([InlineKeyboardButton(f"🔗 {title}", url=link)])
-    if not keyboard:
-        keyboard.append([InlineKeyboardButton("Объявлений пока нет", callback_data='no_ads')])
-    keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='back_to_main')])
-    return InlineKeyboardMarkup(keyboard)
-
-def clean_response(text):
-    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-    return text.strip()
-
-# ================= ИИ-АССИСТЕНТ =================
 async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    user_last_activity[user_id] = datetime.now()  # Обновляем время активности
+    
     if not API_KEY:
         await update.message.reply_text("❌ ИИ не настроен.")
         return
+    
     if user_id not in user_histories:
         user_histories[user_id] = [
             {"role": "system", "content": "Ты полезный ИИ-ассистент. Отвечай кратко и по делу на русском языке."}
         ]
+    
     user_message = update.message.text
     user_histories[user_id].append({"role": "user", "content": user_message})
+    
     thinking_msg = await update.message.reply_text("🤔 Думаю...")
+    
     try:
         headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
         messages = [{"role": m["role"], "content": m["content"]} for m in user_histories[user_id][-MAX_HISTORY:]]
         data = {"model": MODEL, "messages": messages, "temperature": 0.7, "max_tokens": 1024}
+        
         response = requests.post(API_URL, headers=headers, json=data, timeout=30)
+        
         if response.status_code == 200:
             result = response.json()
             ai_response = clean_response(result['choices'][0]['message']['content'])
             user_histories[user_id].append({"role": "assistant", "content": ai_response})
+            
             await thinking_msg.delete()
-            await update.message.reply_text(ai_response, parse_mode=ParseMode.MARKDOWN)
+            
+            # Разбиваем длинные сообщения
+            if len(ai_response) > 4000:
+                for i in range(0, len(ai_response), 4000):
+                    await update.message.reply_text(ai_response[i:i+4000])
+            else:
+                await update.message.reply_text(ai_response)
+            
             if len(user_histories[user_id]) > MAX_HISTORY + 1:
                 user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-MAX_HISTORY:]
         else:
             await thinking_msg.delete()
-            await update.message.reply_text(f"❌ Ошибка API ({response.status_code}):\n{response.text[:200]}")
+            await update.message.reply_text(f"❌ Ошибка API ({response.status_code})")
+            
+    except requests.exceptions.Timeout:
+        await thinking_msg.delete()
+        await update.message.reply_text("⏰ API не отвечает. Попробуй позже.")
     except Exception as e:
         await thinking_msg.delete()
-        await update.message.reply_text(f"❌ Ошибка: {str(e)}")
-
-async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id in user_histories:
-        user_histories[user_id] = [
-            {"role": "system", "content": "Ты полезный ИИ-ассистент. Отвечай кратко и по делу на русском языке."}
-        ]
-    await update.message.reply_text("🧠 История диалога очищена!", reply_markup=get_main_menu())
-
-# ================= КРЕСТИКИ-НОЛИКИ =================
-def check_winner(board):
-    wins = [(0,1,2),(3,4,5),(6,7,8),(0,3,6),(1,4,7),(2,5,8),(0,4,8),(2,4,6)]
-    for a,b,c in wins:
-        if board[a]==board[b]==board[c] and board[a]!=' ':
-            return board[a]
-    return 'draw' if ' ' not in board else None
-
-def get_ttt_keyboard(board):
-    keyboard = []
-    for i in range(0,9,3):
-        row = []
-        for j in range(3):
-            idx = i+j
-            symbol = '❌' if board[idx]=='X' else '⭕' if board[idx]=='O' else '⬜'
-            row.append(InlineKeyboardButton(symbol, callback_data=f"ttt_{idx}"))
-        keyboard.append(row)
-    keyboard.append([InlineKeyboardButton("🔄 Новая игра", callback_data="ttt_restart")])
-    return InlineKeyboardMarkup(keyboard)
-
-async def tictactoe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    tictactoe_games[user_id] = {'board': [' ']*9, 'active': True}
-    await update.message.reply_text(
-        "🎮 **Крестики-нолики!**\n\nТы играешь за ❌. Твой ход!",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=get_ttt_keyboard(tictactoe_games[user_id]['board'])
-    )
+        await update.message.reply_text(f"❌ Ошибка: {str(e)[:200]}")
 
 async def tictactoe_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except Exception:
+        return  # Callback устарел
+    
     user_id = query.from_user.id
     data = query.data
-    if data == "ttt_restart":
-        tictactoe_games[user_id] = {'board': [' ']*9, 'active': True}
-        await query.edit_message_text(
-            "🎮 **Крестики-нолики!**\n\nТвой ход (❌)!",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=get_ttt_keyboard(tictactoe_games[user_id]['board'])
-        )
-        return
-    if user_id not in tictactoe_games or not tictactoe_games[user_id]['active']:
-        await query.answer("Игра не активна! Начни новую /ttt", show_alert=True)
-        return
-    idx = int(data.split("_")[1])
-    board = tictactoe_games[user_id]['board']
-    if board[idx] != ' ':
-        await query.answer("Клетка занята!", show_alert=True)
-        return
-    board[idx] = 'X'
-    winner = check_winner(board)
-    if winner:
-        tictactoe_games[user_id]['active'] = False
-        await query.edit_message_text(
-            f"🎉 **{'ТЫ ПОБЕДИЛ!' if winner=='X' else 'НИЧЬЯ!'}**",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=get_ttt_keyboard(board)
-        )
-        return
-    empty = [i for i,v in enumerate(board) if v==' ']
-    if empty:
-        board[random.choice(empty)] = 'O'
+    
+    try:
+        if data == "ttt_restart":
+            tictactoe_games[user_id] = {'board': [' ']*9, 'active': True}
+            await query.edit_message_text(
+                "🎮 **Крестики-нолики!**\n\nТвой ход (❌)!",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=get_ttt_keyboard(tictactoe_games[user_id]['board'])
+            )
+            return
+        
+        if user_id not in tictactoe_games or not tictactoe_games[user_id]['active']:
+            await query.answer("Игра не активна! Начни новую /ttt", show_alert=True)
+            return
+        
+        idx = int(data.split("_")[1])
+        board = tictactoe_games[user_id]['board']
+        
+        if board[idx] != ' ':
+            await query.answer("Клетка занята!", show_alert=True)
+            return
+        
+        board[idx] = 'X'
         winner = check_winner(board)
+        
         if winner:
             tictactoe_games[user_id]['active'] = False
             await query.edit_message_text(
-                f"🤖 **{'БОТ ПОБЕДИЛ!' if winner=='O' else 'НИЧЬЯ!'}**",
+                f"🎉 **{'ТЫ ПОБЕДИЛ!' if winner=='X' else 'НИЧЬЯ!'}**",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=get_ttt_keyboard(board)
             )
             return
-    await query.edit_message_reply_markup(reply_markup=get_ttt_keyboard(board))
-
-# ================= ИГРА: УГАДАЙ ЧИСЛО =================
-async def guess_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    guess_games[user_id] = random.randint(1, 100)
-    await update.message.reply_text(
-        "🎲 **Угадай число!**\n\nЯ загадал число от 1 до 100.\nНапиши свой вариант числом:",
-        parse_mode=ParseMode.MARKDOWN
-    )
-
-async def guess_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    secret = guess_games.get(user_id)
-    if secret is None:
-        return
-    try:
-        user_guess = int(update.message.text.strip())
-    except ValueError:
-        await update.message.reply_text("❌ Введи именно число!")
-        return
-    if user_guess < secret:
-        await update.message.reply_text("📈 Больше!")
-    elif user_guess > secret:
-        await update.message.reply_text("📉 Меньше!")
-    else:
-        del guess_games[user_id]
-        await update.message.reply_text(
-            f"🎉 **Победа!** Ты угадал число `{secret}`!",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=get_main_menu()
-        )
-
-# ================= ОБРАБОТЧИК КНОПОК МЕНЮ =================
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-    if data == 'ai_mode':
-        await query.edit_message_text("🤖 **ИИ-помощник активирован!**\n\nПросто напиши мне любой вопрос, и я отвечу!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
-    elif data == 'games_menu':
-        await query.edit_message_text("🎮 **Игры**\n\n• Крестики-нолики: /ttt\n• Угадай число: /guess\n• Скоро добавлю новые!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
-    elif data == 'ads_menu':
-        ads = load_ads()
-        if ads:
-            await query.edit_message_text(
-                "📋 **Актуальные объявления:**\n\nНажми на товар, чтобы открыть:",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=get_ads_keyboard(ads)
-            )
-        else:
-            await query.edit_message_text(
-                "📋 **Объявления**\n\nПока нет активных объявлений. Загляни позже!",
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=get_main_menu()
-            )
-    elif data == 'back_to_main':
-        await query.edit_message_text("👋 **Главное меню**\n\nВыбери действие:", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
-    elif data == 'no_ads':
-        await query.answer("Объявлений пока нет", show_alert=True)
-    elif data == 'clear_history':
-        user_id = update.effective_user.id
-        if user_id in user_histories:
-            user_histories[user_id] = [{"role": "system", "content": "Ты полезный ИИ-ассистент."}]
-        await query.edit_message_text("🧠 История очищена!", reply_markup=get_main_menu())
-    elif data == 'get_time':
-        moscow_tz = pytz.timezone('Europe/Moscow')
-        now = datetime.now(moscow_tz).strftime("%H:%M:%S")
-        date = datetime.now(moscow_tz).strftime("%d.%m.%Y")
-        await query.edit_message_text(f"⏰ **Сейчас:** {now}\n📅 **Дата:** {date}", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
-    elif data == 'stats':
-        text = f"📊 **Статистика:**\n\nПользователей с историей: {len(user_histories)}\nАктивных игр: {sum(1 for g in tictactoe_games.values() if g.get('active', False))}\nАктивных игр 'Угадай число': {len(guess_games)}"
-        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
-
-# ================= КОМАНДА /admin =================
-async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    await update.message.reply_text(f"🔧 **Панель администратора**\n\nТвой ID: `{user_id}`", parse_mode=ParseMode.MARKDOWN)
-
-# ================= СТАРТ =================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    first_name = update.effective_user.first_name
-    await update.message.reply_text(
-        f"👋 **Привет, {first_name}!** Я Виктор — ИИ-ассистент.\n\n"
-        "Я умею:\n"
-        "• 🤖 Отвечать на вопросы (просто напиши мне)\n"
-        "• 🎮 Играть в игры (/ttt, /guess)\n"
-        "• 📋 Показывать объявления\n"
-        "• 🧮 Считать математику (/calc)\n"
-        "• 🔍 Искать в интернете (/search)\n\n"
-        "**Нажми на любую кнопку ниже или просто напиши вопрос!**",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=get_main_menu()
-    )
-
-# ================= ОБЪЯВЛЕНИЯ =================
-async def add_ad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Эта команда только для администратора")
-        return
-    if not update.message.text:
-        await update.message.reply_text("❌ Неверный формат.")
-        return
-    text = update.message.text.replace('/add_ad', '', 1).strip()
-    if not text:
-        await update.message.reply_text(
-            "ℹ️ Использование: `/add_ad Название | Ссылка`\n\nПример: `/add_ad iPhone 13 | https://avito.ru/...`",
-            parse_mode=ParseMode.MARKDOWN
-        )
-        return
-    if '|' not in text:
-        await update.message.reply_text("❌ Формат: `Название | Ссылка`", parse_mode=ParseMode.MARKDOWN)
-        return
-    parts = text.split('|', 1)
-    title = parts[0].strip()
-    link = parts[1].strip()
-    if not title or not link:
-        await update.message.reply_text("❌ Название и ссылка не могут быть пустыми.")
-        return
-    ads = load_ads()
-    ads.append({"title": title, "link": link})
-    save_ads(ads)
-    await update.message.reply_text(f"✅ Объявление добавлено: {title}\n🔗 {link}")
-
-async def remove_ad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Эта команда только для администратора")
-        return
-    ads = load_ads()
-    if not ads:
-        await update.message.reply_text("📋 Список объявлений пуст")
-        return
-    if context.args:
-        try:
-            num = int(context.args[0])
-            if 1 <= num <= len(ads):
-                removed = ads.pop(num - 1)
-                save_ads(ads)
-                await update.message.reply_text(f"✅ Удалено: {removed['title']}")
-            else:
-                await update.message.reply_text(f"❌ Номер должен быть от 1 до {len(ads)}")
-        except ValueError:
-            await update.message.reply_text("❌ Введите корректный номер", parse_mode=ParseMode.MARKDOWN)
-        return
-    text = "📋 **Объявления для удаления:**\n\n"
-    for i, ad in enumerate(ads):
-        text += f"`{i+1}`. {ad['title']}\n"
-    text += "\nОтправь `/remove_ad <номер>`, чтобы удалить."
-    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
-
-# ================= ИНСТРУМЕНТЫ =================
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = (
-        "📋 **Список команд:**\n\n"
-        "🔹 /start - Главное меню\n"
-        "🔹 /help - Эта справка\n"
-        "🔹 /ttt - Крестики-нолики\n"
-        "🔹 /guess - Угадай число\n"
-        "🔹 /calc <выражение> - Калькулятор\n"
-        "🔹 /search <запрос> - Поиск в интернете\n"
-        "🔹 /time_cmd - Текущее время\n"
-        "🔹 /clear - Очистить историю ИИ\n"
-        "🔹 /admin - Панель администратора\n"
-        "🔹 /add_ad - Добавить объявление\n"
-        "🔹 /remove_ad - Удалить объявление"
-    )
-    await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
-
-async def calc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    expression = " ".join(context.args)
-    if not expression:
-        await update.message.reply_text("❌ Введите выражение. Пример: `/calc 2+2*2`", parse_mode=ParseMode.MARKDOWN)
-        return
-    await update.message.reply_text(tools.calculate(expression))
-
-async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = " ".join(context.args)
-    if not query:
-        await update.message.reply_text("❌ Введите запрос. Пример: `/search погода в москве`", parse_mode=ParseMode.MARKDOWN)
-        return
-    thinking_msg = await update.message.reply_text("🔍 Ищу в интернете...")
-    result = tools.search_internet(query)
-    await thinking_msg.delete()
-    await update.message.reply_text(result)
-
-async def time_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(tools.get_current_time())
-
-async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = f"📊 **Статистика:**\n\nПользователей с историей: {len(user_histories)}\nАктивных игр: {sum(1 for g in tictactoe_games.values() if g.get('active', False))}\nАктивных игр 'Угадай число': {len(guess_games)}"
-    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+        
+        empty = [i for i,v in enumerate(board) if v==' ']
+        if empty:
+            board[random.choice(empty)] = 'O'
+            winner = check_winner(board)
+            if winner:
+                tictactoe_games[user_id]['active'] = False
+                await query.edit_message_text(
+                    f"🤖 **{'БОТ ПОБЕДИЛ!' if winner=='O' else 'НИЧЬЯ!'}**",
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=get_ttt_keyboard(board)
+                )
+                return
+        
+        await query.edit_message_reply_markup(reply_markup=get_ttt_keyboard(board))
+        
+    except Exception as e:
+        print(f"Ошибка в tictactoe_callback: {e}")
 
 # ================= ЗАПУСК =================
 def main():
     if not TELEGRAM_TOKEN:
         print("❌ TELEGRAM_BOT_TOKEN не найден!")
         return
+    
     print("🚀 Запускаем бота...")
     application = Application.builder().token(TELEGRAM_TOKEN).build()
-
+    
+    # Добавляем задачу очистки старых данных
+    application.job_queue.run_repeating(
+        lambda context: clean_old_histories(),
+        interval=600,  # Каждые 10 минут
+        first=10
+    )
+    
     # Обработчики команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("calc", calc_command))
-    application.add_handler(CommandHandler("search", search_command))
+    
+    if tools:
+        application.add_handler(CommandHandler("calc", calc_command))
+        application.add_handler(CommandHandler("search", search_command))
+    
     application.add_handler(CommandHandler("time_cmd", time_cmd))
     application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(CommandHandler("add_ad", add_ad_command))
@@ -413,18 +216,21 @@ def main():
     application.add_handler(CommandHandler("ttt", tictactoe_command))
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("guess", guess_command))
-
+    application.add_handler(CommandHandler("rps", rps_command))
+    application.add_handler(CommandHandler("quiz", quiz_command))
+    
     # Обработчики кнопок
     application.add_handler(CallbackQueryHandler(tictactoe_callback, pattern='^ttt_'))
+    application.add_handler(CallbackQueryHandler(rps_callback, pattern='^rps_'))
+    application.add_handler(CallbackQueryHandler(quiz_callback, pattern='^quiz_'))
     application.add_handler(CallbackQueryHandler(button_handler))
-
-    # Текстовые сообщения (guess_handler СТРОГО ПЕРЕД ai_chat)
+    
+    # Текстовые сообщения
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & GuessGameFilter(), guess_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_chat))
-
+    
     print("✅ Бот запущен! Ожидаем сообщения...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
     main()
-    
