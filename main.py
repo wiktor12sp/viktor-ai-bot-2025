@@ -441,7 +441,7 @@ def main():
     
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
-    # Обработчики команд
+      # Обработчики команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("calc", calc_command))
@@ -453,16 +453,17 @@ def main():
     application.add_handler(CommandHandler("clear", clear_history))
     application.add_handler(CommandHandler("ttt", tictactoe_command))
     application.add_handler(CommandHandler("stats", stats_command))
-    
+    application.add_handler(CommandHandler("guess", guess_command))
+
     # Обработчики кнопок
     application.add_handler(CallbackQueryHandler(tictactoe_callback, pattern='^ttt_'))
     application.add_handler(CallbackQueryHandler(button_handler))
-    
-    # Текстовые сообщения
+
+    # Текстовые сообщения (guess_handler ДОЛЖЕН БЫТЬ ПЕРЕД ai_chat)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & GuessGameFilter(), guess_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ai_chat))
-    
+
     print("✅ Бот запущен! Ожидаем сообщения...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
-
 if __name__ == '__main__':
     main()
