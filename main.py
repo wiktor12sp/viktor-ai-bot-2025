@@ -22,6 +22,20 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", "8785270105"))
 # Путь к файлу объявлений
 ADS_FILE = "ads_data.json"
 
+USE_GROQ = bool(GROQ_API_KEY)
+API_URL = "https://api.groq.com/openai/v1/chat/completions" if USE_GROQ else "https://api.openai.com/v1/chat/completions"
+API_KEY = GROQ_API_KEY if USE_GROQ else OPENAI_API_KEY
+MODEL = "llama-3.3-70b-versatile" if USE_GROQ else "gpt-3.5-turbo"
+
+print(f"🤖 Используем: {'Groq (Llama)' if USE_GROQ else 'OpenAI (GPT)'}")
+print(f"🔑 API ключ: {'найден' if API_KEY else 'НЕ НАЙДЕН'}")
+
+# ================= ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =================
+MAX_HISTORY = 20
+user_histories = {}
+tictactoe_games = {}
+
+# ================= УТИЛИТЫ =================
 def load_ads():
     """Загружает объявления из файла"""
     try:
@@ -40,25 +54,7 @@ def save_ads(ads):
             json.dump(ads, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"Ошибка сохранения объявлений: {e}")
-# ================= КОНФИГУРАЦИЯ =================
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-USE_GROQ = bool(GROQ_API_KEY)
-API_URL = "https://api.groq.com/openai/v1/chat/completions" if USE_GROQ else "https://api.openai.com/v1/chat/completions"
-API_KEY = GROQ_API_KEY if USE_GROQ else OPENAI_API_KEY
-MODEL = "llama-3.3-70b-versatile" if USE_GROQ else "gpt-3.5-turbo"
-
-print(f"🤖 Используем: {'Groq (Llama)' if USE_GROQ else 'OpenAI (GPT)'}")
-print(f"🔑 API ключ: {'найден' if API_KEY else 'НЕ НАЙДЕН'}")
-
-# ================= ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =================
-MAX_HISTORY = 20
-user_histories = {}
-tictactoe_games = {}
-
-# ================= УТИЛИТЫ =================
 def get_main_menu():
     keyboard = [
         [InlineKeyboardButton("🤖 ИИ-помощник", callback_data='ai_mode'),
@@ -66,7 +62,7 @@ def get_main_menu():
         [InlineKeyboardButton("📋 Объявления", callback_data='ads_menu'),
          InlineKeyboardButton("🧠 Очистить память", callback_data='clear_history')],
         [InlineKeyboardButton("⏰ Время", callback_data='get_time'),
-         InlineKeyboardButton(" Статистика", callback_data='stats')]
+         InlineKeyboardButton("📊 Статистика", callback_data='stats')]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -77,7 +73,7 @@ def get_ads_keyboard(ads):
         title = ad.get('title', 'Без названия')[:40]
         link = ad.get('link', '')
         if link:
-            keyboard.append([InlineKeyboardButton(f" {title}", url=link)])
+            keyboard.append([InlineKeyboardButton(f"🔗 {title}", url=link)])
     
     if not keyboard:
         keyboard.append([InlineKeyboardButton("Объявлений пока нет", callback_data='no_ads')])
@@ -94,7 +90,7 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if not API_KEY:
-        await update.message.reply_text("❌ ИИ не настроен. Добавь API ключ в Railway.")
+        await update.message.reply_text("❌ ИИ не настроен. Добавь API ключ.")
         return
     
     if user_id not in user_histories:
@@ -253,14 +249,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     
     if data == 'ai_mode':
-        await query.edit_message_text(" **ИИ-помощник активирован!**\n\nПросто напиши мне любой вопрос, и я отвечу!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
+        await query.edit_message_text("🤖 **ИИ-помощник активирован!**\n\nПросто напиши мне любой вопрос, и я отвечу!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
     elif data == 'games_menu':
         await query.edit_message_text("🎮 **Игры**\n\n• Крестики-нолики: /ttt\n• Скоро добавлю новые!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
-        elif data == 'ads_menu':
+    elif data == 'ads_menu':
         ads = load_ads()
         if ads:
             await query.edit_message_text(
-                " **Актуальные объявления:**\n\nНажми на товар, чтобы открыть:",
+                "📋 **Актуальные объявления:**\n\nНажми на товар, чтобы открыть:",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=get_ads_keyboard(ads)
             )
@@ -278,7 +274,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     elif data == 'no_ads':
         await query.answer("Объявлений пока нет", show_alert=True)
-        
     elif data == 'clear_history':
         user_id = update.effective_user.id
         if user_id in user_histories:
@@ -290,7 +285,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         date = datetime.now(moscow_tz).strftime("%d.%m.%Y")
         await query.edit_message_text(f"⏰ **Сейчас:** {now}\n📅 **Дата:** {date}", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
     elif data == 'stats':
-        await query.edit_message_text(f"📊 **Статистика:**\n\nПользователей с историей: {len(user_histories)}\nАктивных игр: {sum(1 for g in tictactoe_games.values() if g.get('active', False))}", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
+        text = f"📊 **Статистика:**\n\nПользователей с историей: {len(user_histories)}\nАктивных игр: {sum(1 for g in tictactoe_games.values() if g.get('active', False))}"
+        await query.edit_message_text(text, parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
 
 # ================= КОМАНДА /admin =================
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -314,7 +310,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=get_main_menu()
     )
-    await update.message.reply_text("👋 **Пр" \ "ивет! Я Виктор ИИ Ассистент!**\n\nЯ умею:\n• 🤖 Отвечать на вопросы (ИИ)\n•  Играть в крестики-нолики\n• 📋 Вести объявления (скоро)\n• 🧠 Помнить историю диалога\n\nВыбери действие:", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
+
+# ================= ОБЪЯВЛЕНИЯ =================
 async def add_ad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Добавить объявление (только для админа)"""
     user_id = update.effective_user.id
@@ -322,29 +319,38 @@ async def add_ad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Эта команда только для администратора")
         return
     
-    args = context.args
-    if len(args) < 2:
+    if not update.message.text:
+        await update.message.reply_text("❌ Неверный формат.")
+        return
+        
+    # Убираем саму команду из текста, чтобы получить только payload
+    text = update.message.text.replace('/add_ad', '', 1).strip()
+    
+    if not text:
         await update.message.reply_text(
-            "Использование: `/add_ad Название | Ссылка`\n\nПример: `/add_ad iPhone 13 | https://avito.ru/...`",
+            "ℹ️ Использование: `/add_ad Название | Ссылка`\n\nПример: `/add_ad iPhone 13 | https://avito.ru/...`",
             parse_mode=ParseMode.MARKDOWN
         )
         return
-    
-    text = " ".join(args)
-    parts = text.split('|')
-    
-    if len(parts) != 2:
-        await update.message.reply_text("❌ Формат: Название | Ссылка (разделитель - вертикальная черта |)")
+        
+    if '|' not in text:
+        await update.message.reply_text("❌ Формат: `Название | Ссылка` (разделитель - вертикальная черта `|`)", parse_mode=ParseMode.MARKDOWN)
         return
-    
+        
+    # Разделяем только по первому вхождению, чтобы в ссылке не было проблем
+    parts = text.split('|', 1)
     title = parts[0].strip()
     link = parts[1].strip()
     
+    if not title or not link:
+        await update.message.reply_text("❌ Название и ссылка не могут быть пустыми.")
+        return
+        
     ads = load_ads()
     ads.append({"title": title, "link": link})
     save_ads(ads)
     
-    await update.message.reply_text(f"✅ Объявление добавлено: {title}")
+    await update.message.reply_text(f"✅ Объявление добавлено: {title}\n🔗 {link}")
 
 async def remove_ad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Удалить объявление (только для админа)"""
@@ -355,10 +361,9 @@ async def remove_ad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     ads = load_ads()
     if not ads:
-        await update.message.reply_text(" Список объявлений пуст")
+        await update.message.reply_text("📋 Список объявлений пуст")
         return
     
-    # Проверяем, передан ли номер для удаления
     if context.args:
         try:
             num = int(context.args[0])
@@ -369,30 +374,33 @@ async def remove_ad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await update.message.reply_text(f"❌ Номер должен быть от 1 до {len(ads)}")
         except ValueError:
-            await update.message.reply_text("❌ Введите номер (например: /remove_ad 1)")
+            await update.message.reply_text("❌ Введите корректный номер (например: `/remove_ad 1`)", parse_mode=ParseMode.MARKDOWN)
         return
     
-    # Если номер не передан — показываем список
-    text = "📋 Объявления для удаления:\n\n"
+    # Если номер не передан — показываем список для удаления
+    text = "📋 **Объявления для удаления:**\n\n"
     for i, ad in enumerate(ads):
-        text += f"{i+1}. {ad['title']}\n"
-    text += "\nНапиши `/remove_ad <номер>` чтобы удалить (например: /remove_ad 1)"
+        text += f"`{i+1}`. {ad['title']}\n"
+    text += "\nОтправь `/remove_ad <номер>`, чтобы удалить."
     
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+
 # ================= НОВЫЕ ИНСТРУМЕНТЫ =================
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
-        " Список команд:\n\n"
-        " /start - Главное меню\n"
+        "📋 **Список команд:**\n\n"
+        "🔹 /start - Главное меню\n"
         "🔹 /help - Эта справка\n"
         "🔹 /ttt - Играть в крестики-нолики\n"
-        "🔹 /calc <выражение> - Калькулятор (пример: /calc 25*4)\n"
+        "🔹 /calc <выражение> - Калькулятор (пример: `/calc 25*4`)\n"
         "🔹 /search <запрос> - Поиск в интернете\n"
         "🔹 /time_cmd - Текущее время\n"
         "🔹 /clear - Очистить историю ИИ\n"
-        "🔹 /admin - Панель администратора"
+        "🔹 /admin - Панель администратора\n"
+        "🔹 /add_ad - Добавить объявление\n"
+        "🔹 /remove_ad - Удалить объявление"
     )
-    await update.message.reply_text(help_text)
+    await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
 
 async def calc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     expression = " ".join(context.args)
@@ -414,13 +422,17 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def time_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(tools.get_current_time())
 
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = f"📊 **Статистика:**\n\nПользователей с историей: {len(user_histories)}\nАктивных игр: {sum(1 for g in tictactoe_games.values() if g.get('active', False))}"
+    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+
 # ================= ЗАПУСК =================
 def main():
     if not TELEGRAM_TOKEN:
         print("❌ TELEGRAM_BOT_TOKEN не найден!")
         return
     
-    print(" Запускаем бота...")
+    print("🚀 Запускаем бота...")
     print(f"📱 Токен: {TELEGRAM_TOKEN[:10]}...")
     
     if not API_KEY:
@@ -440,7 +452,7 @@ def main():
     application.add_handler(CommandHandler("remove_ad", remove_ad_command))
     application.add_handler(CommandHandler("clear", clear_history))
     application.add_handler(CommandHandler("ttt", tictactoe_command))
-    application.add_handler(CommandHandler("stats", lambda u, c: button_handler(u, c)))
+    application.add_handler(CommandHandler("stats", stats_command))
     
     # Обработчики кнопок
     application.add_handler(CallbackQueryHandler(tictactoe_callback, pattern='^ttt_'))
