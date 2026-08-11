@@ -1,6 +1,5 @@
 import os
 import re
-import json
 import random
 import requests
 from dotenv import load_dotenv
@@ -33,54 +32,20 @@ print(f"👤 Админ ID: {ADMIN_ID}")
 MAX_HISTORY = 20
 user_histories = {}
 tictactoe_games = {}
-ADS_FILE = "ads_data.json"
 
 # ================= УТИЛИТЫ =================
-def load_ads():
-    """Загружает объявления из файла"""
-    try:
-        with open(ADS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return []
-    except Exception as e:
-        print(f"Ошибка загрузки объявлений: {e}")
-        return []
-
-def save_ads(ads):
-    """Сохраняет объявления в файл"""
-    try:
-        with open(ADS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(ads, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"Ошибка сохранения объявлений: {e}")
-
 def get_main_menu():
     keyboard = [
         [InlineKeyboardButton("🤖 ИИ-помощник", callback_data='ai_mode'),
          InlineKeyboardButton("🎮 Игры", callback_data='games_menu')],
-        [InlineKeyboardButton("📋 Объявления", callback_data='ads_menu'),
-         InlineKeyboardButton("🧠 Очистить память", callback_data='clear_history')],
-        [InlineKeyboardButton("⏰ Время", callback_data='get_time'),
-         InlineKeyboardButton(" Статистика", callback_data='stats')]
+        [InlineKeyboardButton("🧠 Очистить память", callback_data='clear_history'),
+         InlineKeyboardButton("⏰ Время", callback_data='get_time')],
+        [InlineKeyboardButton("📊 Статистика", callback_data='stats')]
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def get_ads_keyboard(ads):
-    """Создаёт кнопки с ссылками на объявления"""
-    keyboard = []
-    for ad in ads[:10]:
-        title = ad.get('title', 'Без названия')[:40]
-        link = ad.get('link', '')
-        if link:
-            keyboard.append([InlineKeyboardButton(f"📱 {title}", url=link)])
-    
-    if not keyboard:
-        keyboard.append([InlineKeyboardButton("Объявлений пока нет", callback_data='no_ads')])
-    
-    keyboard.append([InlineKeyboardButton("◀️ Назад", callback_data='back_to_main')])
-    return InlineKeyboardMarkup(keyboard)
-
+def clean_response(text):
+    text = re.sub(r'<think>.*?
 def clean_response(text):
     text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     return text.strip()
@@ -133,7 +98,7 @@ async def clear_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id in user_histories:
         user_histories[user_id] = [{"role": "system", "content": "Ты полезный ИИ-ассистент. Отвечай кратко и по делу на русском языке."}]
-    await update.message.reply_text(" История диалога очищена!", reply_markup=get_main_menu())
+    await update.message.reply_text("🧠 История диалога очищена!", reply_markup=get_main_menu())
 
 # ================= КРЕСТИКИ-НОЛИКИ =================
 def check_winner(board):
@@ -212,17 +177,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == 'ai_mode':
         await query.edit_message_text("🤖 **ИИ-помощник активирован!**\n\nПросто напиши мне любой вопрос, и я отвечу!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
     elif data == 'games_menu':
-        await query.edit_message_text(" **Игры**\n\n• Крестики-нолики: /ttt\n• Скоро добавлю новые!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
-    elif data == 'ads_menu':
-        ads = load_ads()
-        if ads:
-            await query.edit_message_text("📋 **Актуальные объявления:**\n\nНажми на товар, чтобы открыть:", parse_mode=ParseMode.MARKDOWN, reply_markup=get_ads_keyboard(ads))
-        else:
-            await query.edit_message_text("📋 **Объявления**\n\nПока нет активных объявлений. Загляни позже!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
+        await query.edit_message_text("🎮 **Игры**\n\n• Крестики-нолики: /ttt\n• Скоро добавлю новые!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
     elif data == 'back_to_main':
-        await query.edit_message_text(" **Главное меню**\n\nВыбери действие:", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
-    elif data == 'no_ads':
-        await query.answer("Объявлений пока нет", show_alert=True)
+        await query.edit_message_text("🏠 **Главное меню**\n\nВыбери действие:", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
     elif data == 'clear_history':
         user_id = update.effective_user.id
         if user_id in user_histories:
@@ -236,65 +193,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == 'stats':
         await query.edit_message_text(f"📊 **Статистика:**\n\nПользователей с историей: {len(user_histories)}\nАктивных игр: {sum(1 for g in tictactoe_games.values() if g.get('active', False))}", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
 
-# ================= АДМИН И ОБЪЯВЛЕНИЯ =================
+# ================= АДМИН =================
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    await update.message.reply_text(f" **Панель администратора**\n\nДоступные команды:\n/add_ad - Добавить объявление\n/remove_ad - Удалить объявление\n\nТвой ID: `{user_id}`", parse_mode=ParseMode.MARKDOWN)
-
-async def add_ad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
     if user_id != ADMIN_ID:
         await update.message.reply_text("❌ Эта команда только для администратора")
         return
-    
-    text = " ".join(context.args) if context.args else ""
-    if '|' not in text:
-        await update.message.reply_text("❌ Формат: `/add_ad Название | Ссылка`", parse_mode=ParseMode.MARKDOWN)
-        return
-    
-    parts = text.split('|', 1)
-    title = parts[0].strip()
-    link = parts[1].strip()
-    
-    ads = load_ads()
-    ads.append({"title": title, "link": link})
-    save_ads(ads)
-    await update.message.reply_text(f"✅ Объявление добавлено: {title}")
-
-async def remove_ad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Эта команда только для администратора")
-        return
-    
-    ads = load_ads()
-    if not ads:
-        await update.message.reply_text("📋 Список объявлений пуст")
-        return
-    
-    if context.args:
-        try:
-            num = int(context.args[0])
-            if 1 <= num <= len(ads):
-                removed = ads.pop(num - 1)
-                save_ads(ads)
-                await update.message.reply_text(f"✅ Удалено: {removed['title']}")
-            else:
-                await update.message.reply_text(f"❌ Номер должен быть от 1 до {len(ads)}")
-        except ValueError:
-            await update.message.reply_text("❌ Введите номер (например: /remove_ad 1)")
-        return
-    
-    text = "📋 Объявления для удаления:\n\n"
-    for i, ad in enumerate(ads):
-        text += f"{i+1}. {ad['title']}\n"
-    text += "\nНапиши `/remove_ad <номер>` чтобы удалить"
-    await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(f"🔧 **Панель администратора**\n\nТвой ID: `{user_id}`", parse_mode=ParseMode.MARKDOWN)
 
 # ================= ИНСТРУМЕНТЫ =================
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
-        "📖 Список команд:\n\n"
+        "📖 **Список команд:**\n\n"
         "🔹 /start - Главное меню\n"
         "🔹 /help - Эта справка\n"
         "🔹 /ttt - Крестики-нолики\n"
@@ -304,7 +214,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔹 /clear - Очистить историю ИИ\n"
         "🔹 /admin - Панель администратора"
     )
-    await update.message.reply_text(help_text)
+    await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
 
 async def calc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     expression = " ".join(context.args)
@@ -336,7 +246,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Я умею:\n"
         "• 🤖 Отвечать на вопросы (просто напиши мне)\n"
         "• 🎮 Играть в игры (крестики-нолики и другие)\n"
-        "• 📋 Показывать объявления\n"
         "• 🧮 Считать математику (/calc)\n"
         "• 🔍 Искать в интернете (/search)\n\n"
         "**Нажми на любую кнопку ниже или просто напиши вопрос!**",
@@ -360,8 +269,6 @@ def main():
     application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(CommandHandler("clear", clear_history))
     application.add_handler(CommandHandler("ttt", tictactoe_command))
-    application.add_handler(CommandHandler("add_ad", add_ad_command))
-    application.add_handler(CommandHandler("remove_ad", remove_ad_command))
     
     application.add_handler(CallbackQueryHandler(tictactoe_callback, pattern='^ttt_'))
     application.add_handler(CallbackQueryHandler(button_handler))
@@ -372,4 +279,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
