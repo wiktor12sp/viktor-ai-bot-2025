@@ -263,10 +263,10 @@ def main():
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("calc", calc_command))
-    application.add_handler(CommandHandler("search", search_command))
-    application.add_handler(CommandHandler("time_cmd", time_cmd))
-    application.add_handler(CommandHandler("admin", admin_command))
+    application.add_handler(C5mmandHandler("calc", calc_command))
+    application.add_handler(C5mmandHandler("search", search_command))
+    application.add_handler(C5mmandHandler("time_cmd", time_cmd))
+    application.add_handler(C5mmandHandler("admin", admin_command))
     application.add_handler(CommandHandler("clear", clear_history))
     application.add_handler(CommandHandler("ttt", tictactoe_command))
     
