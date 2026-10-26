@@ -10,6 +10,9 @@ from datetime import datetime
 import pytz
 import tools
 
+# Импорт функций для игры в змейку
+from snake_game import start_snake_game, handle_snake_button
+
 # Загружаем переменные окружения
 load_dotenv()
 
@@ -45,8 +48,6 @@ def get_main_menu():
     return InlineKeyboardMarkup(keyboard)
 
 def clean_response(text):
-    text = re.sub(r'<think>.*?
-def clean_response(text):
     text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     return text.strip()
 
@@ -55,7 +56,7 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if not API_KEY:
-        await update.message.reply_text("❌ ИИ не настроен. Добавь API ключ в Railway.")
+        await update.message.reply_text("❌ ИИ не настроен. Добавь API ключ в .env")
         return
     
     if user_id not in user_histories:
@@ -177,7 +178,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == 'ai_mode':
         await query.edit_message_text("🤖 **ИИ-помощник активирован!**\n\nПросто напиши мне любой вопрос, и я отвечу!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
     elif data == 'games_menu':
-        await query.edit_message_text("🎮 **Игры**\n\n• Крестики-нолики: /ttt\n• Скоро добавлю новые!", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
+        await query.edit_message_text("🎮 **Игры**\n\n• Крестики-нолики: /ttt\n• Змейка: /snake", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
     elif data == 'back_to_main':
         await query.edit_message_text("🏠 **Главное меню**\n\nВыбери действие:", parse_mode=ParseMode.MARKDOWN, reply_markup=get_main_menu())
     elif data == 'clear_history':
@@ -208,6 +209,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔹 /start - Главное меню\n"
         "🔹 /help - Эта справка\n"
         "🔹 /ttt - Крестики-нолики\n"
+        "🔹 /snake - Игра Змейка 🐍\n"
         "🔹 /calc <выражение> - Калькулятор\n"
         "🔹 /search <запрос> - Поиск в интернете\n"
         "🔹 /time_cmd - Текущее время\n"
@@ -245,7 +247,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👋 **Привет, {first_name}!** Я Виктор — ИИ-ассистент.\n\n"
         "Я умею:\n"
         "• 🤖 Отвечать на вопросы (просто напиши мне)\n"
-        "• 🎮 Играть в игры (крестики-нолики и другие)\n"
+        "• 🎮 Играть в игры (/ttt, /snake)\n"
         "• 🧮 Считать математику (/calc)\n"
         "• 🔍 Искать в интернете (/search)\n\n"
         "**Нажми на любую кнопку ниже или просто напиши вопрос!**",
@@ -263,12 +265,16 @@ def main():
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(C5mmandHandler("calc", calc_command))
-    application.add_handler(C5mmandHandler("search", search_command))
-    application.add_handler(C5mmandHandler("time_cmd", time_cmd))
-    application.add_handler(C5mmandHandler("admin", admin_command))
+    application.add_handler(CommandHandler("calc", calc_command))
+    application.add_handler(CommandHandler("search", search_command))
+    application.add_handler(CommandHandler("time_cmd", time_cmd))
+    application.add_handler(CommandHandler("admin", admin_command))
     application.add_handler(CommandHandler("clear", clear_history))
     application.add_handler(CommandHandler("ttt", tictactoe_command))
+    
+    # Обработчики для игры в змейку
+    application.add_handler(CommandHandler("snake", start_snake_game))
+    application.add_handler(CallbackQueryHandler(handle_snake_button, pattern='^snake_'))
     
     application.add_handler(CallbackQueryHandler(tictactoe_callback, pattern='^ttt_'))
     application.add_handler(CallbackQueryHandler(button_handler))
@@ -279,3 +285,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    
