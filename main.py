@@ -82,7 +82,14 @@ async def ai_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_histories[user_id].append({"role": "assistant", "content": ai_response})
             
             await thinking_msg.delete()
-            await update.message.reply_text(ai_response, parse_mode=ParseMode.MARKDOWN)
+            
+            # === ИСПРАВЛЕНИЕ ОШИБКИ LATIN-1 ===
+            try:
+                await update.message.reply_text(ai_response, parse_mode=ParseMode.MARKDOWN)
+            except Exception:
+                # Если markdown вызывает ошибку кодировки, отправляем как обычный текст
+                await update.message.reply_text(ai_response)
+            # ===================================
             
             if len(user_histories[user_id]) > MAX_HISTORY + 1:
                 user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-MAX_HISTORY:]
